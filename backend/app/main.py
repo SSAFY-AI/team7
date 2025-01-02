@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain.vectorstores import Chroma
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -6,11 +7,19 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain.chat_models import ChatOpenAI
 import os
-from quest_summary import get_random_questions, generate_summary
-
+from .quest_summary import get_random_questions, generate_summary
 
 # FastAPI 앱 생성
 app = FastAPI()
+
+# CORS 설정 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 모든 도메인 허용 (보안 필요 시 도메인 지정 가능)
+    allow_credentials=True,
+    allow_methods=["*"],  # 모든 HTTP 메서드 허용
+    allow_headers=["*"],  # 모든 HTTP 헤더 허용
+)
 
 # Embedding 모델 초기화
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -33,7 +42,7 @@ prompt_template = PromptTemplate(
     template="""
     요약 내용:
     {summary}
- 
+
     기존 전문가 코멘트들:
     {reference_comments}
 
@@ -47,7 +56,7 @@ prompt_template = PromptTemplate(
 # LLMChain 구성
 comment_chain = LLMChain(llm=llm, prompt=prompt_template)
 
-# 전문가 코멘트 생성 함수
+
 # 전문가 코멘트 생성 함수
 def generate_expert_comment(summary):
     # 관련 문서 검색
@@ -75,43 +84,57 @@ def generate_expert_comment(summary):
 class CommentRequest(BaseModel):
     summary: str
 
+
 class CommentResponse(BaseModel):
     new_comment: str
-    
+
+
 responses = []
 
 # 질문 리스트 정의
 questions = []
 
+
 # 요청 데이터 모델 정의
 class ChatRequest(BaseModel):
     user_message: str
 
+    # @validator("user_message")
+    # def validate_user_message(cls, value):
+    #     if not value or not value.strip():
+    #         raise ValueError("user_message must not be empty")
+    #     return value
+
+
 # 응답 데이터 모델 정의
 class ChatResponse(BaseModel):
     next_question: str
+
 
 @app.get("/init", response_model=ChatResponse)
 def init_chat():
     global questions
     questions = get_random_questions()
     print(questions)
-    return ChatResponse( next_question=questions[0] )
+    return ChatResponse(next_question=questions[0])
+
 
 text = ""
 
+
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(request: ChatRequest):
+    print("Received data:", request)
     user_message = request.user_message
-    
+
     global text, questions
-    
+
     # 사용자 응답 저장
     responses.append(user_message)
-    print(responses)
-    
+    print("Responses so far:", responses)
+
     # 질문 순서에 따라 다음 질문 결정
-    question_index = len(responses)  # +1 제거
+    question_index = len(responses)
     if question_index < len(questions):
         next_question = questions[question_index]
         return ChatResponse(
@@ -128,16 +151,18 @@ def chat_endpoint(request: ChatRequest):
         return ChatResponse(
             next_question="모든 질문이 완료되었습니다. 감사합니다!"
         )
-    
+
 
 @app.get("/generate-comment", response_model=CommentResponse)
 def generate_comment_endpoint():
     global text
     try:
         new_comment = generate_expert_comment(text)
-        return CommentResponse(new_comment=str(str(new_comment.get('text'))+"  \n "+str(new_comment.get('job_label'))))
+        return CommentResponse(
+            new_comment=str(str(new_comment.get('text')) + "  \n " + str(new_comment.get('job_label'))))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating comment: {str(e)}")
+
 
 @app.get("/")
 def root():

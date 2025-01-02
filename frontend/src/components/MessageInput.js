@@ -1,23 +1,15 @@
 import React, { useState } from "react";
-import { sendMessage } from "../api/chat";
 import "../styles/MessageInput.css";
 
 function MessageInput({ addMessage }) {
   const [input, setInput] = useState("");
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!input.trim()) return;
 
+    // 사용자 메시지 추가
     addMessage(input, "user");
-
-    try {
-      const response = await sendMessage(input);
-      addMessage(response.bot_response, "bot");
-    } catch (error) {
-      addMessage("에러가 발생했습니다. 다시 시도해주세요.", "bot");
-    }
-
     setInput("");
   };
 

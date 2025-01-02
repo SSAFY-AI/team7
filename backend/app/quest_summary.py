@@ -1,10 +1,16 @@
 import pandas as pd
 import random
 import openai
+import os
+# 현재 파일의 디렉토리 경로
+base_dir = os.path.dirname(os.path.abspath(__file__))
+print(base_dir)
+question_data_file = os.path.join(base_dir, "sorted_generalized_questions_korean.csv")
 
-# 데이터 로드
-question_data_file = "sorted_generalized_questions_korean.csv"
 question_data = pd.read_csv(question_data_file)
+# # 데이터 로드
+# question_data_file = "sorted_generalized_questions_korean.csv"
+# question_data = pd.read_csv(question_data_file)
 
 # 열 이름 확인
 print(question_data.columns)
