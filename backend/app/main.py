@@ -1,50 +1,144 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
+from langchain.vectorstores import Chroma
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+from langchain.chat_models import ChatOpenAI
+import os
+from quest_summary import get_random_questions, generate_summary
 
-from backend.app.services.generation import generate_response
-from backend.app.services.retrieval import search_data
 
+# FastAPI 앱 생성
 app = FastAPI()
 
-# CORS 설정 (React 앱과의 통신 허용)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React 개발 서버 주소
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Embedding 모델 초기화
+embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
+# 기존 ChromaDB 로드
+persist_directory = "./rag_db"
+vectorstore = Chroma(
+    collection_name="career_advice",
+    embedding_function=embedding_model,
+    persist_directory=persist_directory
 )
 
+# RAG를 위한 ChatOpenAI 초기화
+llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0)
+retriever = vectorstore.as_retriever(search_kwargs={"k": 20})
 
-# 사용자 메시지를 받을 데이터 모델
-class UserMessage(BaseModel):
-    user_input: str
+# Prompt Template 생성
+prompt_template = PromptTemplate(
+    input_variables=["summary", "reference_comments", "job_label"],
+    template="""
+    요약 내용:
+    {summary}
+ 
+    기존 전문가 코멘트들:
+    {reference_comments}
+
+    직무 유형:
+    {job_label}
+
+    이 내용을 바탕으로 해당 직무 유형에 맞는 새로운 전문가 코멘트를 작성해주세요(특정 학년 제거):
+    """
+)
+
+# LLMChain 구성
+comment_chain = LLMChain(llm=llm, prompt=prompt_template)
+
+# 전문가 코멘트 생성 함수
+# 전문가 코멘트 생성 함수
+def generate_expert_comment(summary):
+    # 관련 문서 검색
+    documents = retriever.get_relevant_documents(summary)
+
+    # 기존 코멘트 합치기
+    if documents:
+        reference_comments = "\n".join([doc.metadata["expert_comment_ko"] for doc in documents])
+        job_label = documents[0].metadata.get("job_label", "알 수 없음")
+    else:
+        reference_comments = "해당 요약 내용에 대한 기존 코멘트가 없습니다."
+        job_label = "알 수 없음"
+
+    # 새로운 코멘트 생성
+    new_comment = comment_chain.invoke({
+        "summary": summary,
+        "reference_comments": reference_comments,
+        "job_label": job_label
+    })
+
+    return new_comment
 
 
-# Chat API 엔드포인트
-@app.post("/chat")
-async def chat_endpoint(message: UserMessage):
-    user_message = message.user_input
+# 요청 데이터 모델 정의
+class CommentRequest(BaseModel):
+    summary: str
 
-    # 간단한 응답 (추후 RAG 통합 가능)
-    if user_message.strip() == "":
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+class CommentResponse(BaseModel):
+    new_comment: str
+    
+responses = []
 
-    # FastAPI가 생성하는 기본 응답
-    bot_response = f"Hi, you said: {user_message}"
+# 질문 리스트 정의
+questions = []
 
-    # Step 1: 데이터 검색
-    # retrieved_docs = search_data(user_message, public_data)
+# 요청 데이터 모델 정의
+class ChatRequest(BaseModel):
+    user_message: str
 
-    # Step 2: OpenAI API를 통해 답변 생성
-    # bot_response = generate_response(user_message, retrieved_docs)
+# 응답 데이터 모델 정의
+class ChatResponse(BaseModel):
+    next_question: str
 
-    return {"bot_response": bot_response}
+@app.get("/init", response_model=ChatResponse)
+def init_chat():
+    global questions
+    questions = get_random_questions()
+    print(questions)
+    return ChatResponse( next_question=questions[0] )
 
+text = ""
 
-# 앱 실행 (개발 환경)
-if __name__ == "__main__":
-    import uvicorn
+@app.post("/chat", response_model=ChatResponse)
+def chat_endpoint(request: ChatRequest):
+    user_message = request.user_message
+    
+    global text, questions
+    
+    # 사용자 응답 저장
+    responses.append(user_message)
+    print(responses)
+    
+    # 질문 순서에 따라 다음 질문 결정
+    question_index = len(responses)  # +1 제거
+    if question_index < len(questions):
+        next_question = questions[question_index]
+        return ChatResponse(
+            next_question=next_question
+        )
+    else:
+        # 모든 질문이 완료되면 응답 리스트 초기화
+        text = ""
+        for i in responses:
+            text += i + "\n"
+        sum = generate_summary(text)
+        print(sum)
+        responses.clear()
+        return ChatResponse(
+            next_question="모든 질문이 완료되었습니다. 감사합니다!"
+        )
+    
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/generate-comment", response_model=CommentResponse)
+def generate_comment_endpoint():
+    global text
+    try:
+        new_comment = generate_expert_comment(text)
+        return CommentResponse(new_comment=str(str(new_comment.get('text'))+"  \n "+str(new_comment.get('job_label'))))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating comment: {str(e)}")
+
+@app.get("/")
+def root():
+    return {"message": "API is running"}
