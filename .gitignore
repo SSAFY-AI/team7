@@ -1,0 +1,36 @@
+# Backend 관련
+backend/.env
+backend/__pycache__/
+backend/venv/
+backend/*.sqlite3
+backend/.pytest_cache/
+backend/.aws-sam/
+backend/.terraform/
+backend/migrations/
+
+# Frontend 관련
+frontend/node_modules/
+frontend/.env
+frontend/.cache/
+frontend/build/
+frontend/debug.log
+frontend/coverage/
+frontend/.eslintcache
+
+# 공통
+*.log
+*.pyc
+*.pyo
+*.env*
+.DS_Store
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+
+# Docker 관련 (옵션)
+docker-compose.override.yml
+
+# CI/CD 관련 (옵션)
+.circleci/
+.github/workflows/
