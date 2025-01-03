@@ -81,7 +81,6 @@ backend/
 ## 사전 요구사항
 - Python 3.9.12
 - ChromaDB 및  HuggingFace Embedding 모델 설치
-- 
 
 ## 실행 단계
 1. **리포지토리 클론**
