@@ -9,10 +9,11 @@ function ChatWindow() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [typingMessage, setTypingMessage] = useState("");
+  const [loadingResult, setLoadingResult] = useState(false); // 결과 로딩 상태
+  const [showResultButton, setShowResultButton] = useState(false); // 결과받기 버튼 표시 여부
   const navigate = useNavigate();
-  const messagesEndRef = useRef(null); // 스크롤을 위해 Ref 생성
+  const messagesEndRef = useRef(null);
 
-  // 타이핑 효과를 구현하는 함수
   const typeEffect = (text, callback) => {
     let index = 0;
     const interval = setInterval(() => {
@@ -25,12 +26,10 @@ function ChatWindow() {
     }, 50);
   };
 
-  // 스크롤을 최신 메시지로 이동하는 함수
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // FastAPI 서버에서 초기 질문 가져오기
   useEffect(() => {
     const fetchInitialQuestion = async () => {
       try {
@@ -56,12 +55,10 @@ function ChatWindow() {
     fetchInitialQuestion();
   }, []);
 
-  // 메시지가 추가될 때마다 스크롤 처리
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // 사용자 메시지 추가 및 POST 요청 처리
   const addMessage = async (message, sender) => {
     setMessages((prevMessages) => [...prevMessages, { text: message, sender }]);
 
@@ -84,6 +81,9 @@ function ChatWindow() {
               { text: data.next_question, sender: "bot" },
             ]);
             setTypingMessage("");
+            if (data.next_question === "모든 질문이 완료되었습니다. 감사합니다!") {
+              setShowResultButton(true); // 결과받기 버튼 표시
+            }
           });
         } else {
           console.error("Failed to send message", response.status);
@@ -94,8 +94,8 @@ function ChatWindow() {
     }
   };
 
-  // 검사하기 버튼 클릭 핸들러
   const handleCheck = async () => {
+    setLoadingResult(true); // 로딩 상태 활성화
     try {
       const response = await fetch(`${API_BASE_URL}/generate-comment`);
       if (response.ok) {
@@ -106,6 +106,8 @@ function ChatWindow() {
       }
     } catch (error) {
       console.error("Error fetching comment", error);
+    } finally {
+      setLoadingResult(false); // 로딩 상태 비활성화
     }
   };
 
@@ -118,34 +120,36 @@ function ChatWindow() {
       <h1>1:1 상담</h1>
       <div className="chat-messages">
         {messages.map((message, index) => (
-            <div
-                key={index}
-                className={`message ${message.sender === "user" ? "user" : "bot"}`}
-            >
-              {message.sender === "bot" ? (
-                  <>
-                    <span role="img" aria-label="bot">🤖</span>
-                    {message.text}
-                  </>
-              ) : (
-                  <>
-                    {message.text}
-                    <span role="img" aria-label="user">😊</span>
-                  </>
-              )}
-            </div>
+          <div
+            key={index}
+            className={`message ${message.sender === "user" ? "user" : "bot"}`}
+          >
+            {message.sender === "bot" ? (
+              <>
+                <span role="img" aria-label="bot">🤖</span>
+                {message.text}
+              </>
+            ) : (
+              <>
+                {message.text}
+                <span role="img" aria-label="user">😊</span>
+              </>
+            )}
+          </div>
         ))}
         {typingMessage && (
-            <div className="message bot typing">
-              <span role="img" aria-label="bot">🤖</span> {typingMessage}
-            </div>
+          <div className="message bot typing">
+            <span role="img" aria-label="bot">🤖</span> {typingMessage}
+          </div>
         )}
         <div ref={messagesEndRef}></div>
       </div>
-      <MessageInput addMessage={addMessage}/>
-      <button onClick={handleCheck} className="check-button">
-          결과받기
-      </button>
+      <MessageInput addMessage={addMessage} />
+      {showResultButton && (
+        <button onClick={handleCheck} className="check-button" disabled={loadingResult}>
+          {loadingResult ? "생성 중.." : "결과받기"}
+        </button>
+      )}
     </div>
   );
 }
