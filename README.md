@@ -21,7 +21,7 @@ RAG 파이프라인을 기반으로 구축된 **진로 추천 서비스**입니�
 ### **Frontend**
 - **Framework**: React
 - **Styling**: CSS
-- **Build & Deployment**: AWS CloudFront
+- **Build & Deployment**: AWS S3, CloudFront
 - **State Management**: 기본 React 상태 관리
 
 ---
